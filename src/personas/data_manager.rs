@@ -446,7 +446,7 @@ impl DataManager {
                     let overwrite_deleted = match (old_data_result, &data) {
                         (Ok(Data::Structured(ref old_data)), &Data::Structured(ref new_data)) => {
                             old_data.is_deleted() &&
-                            old_data.validate_self_against_successor(new_data).is_ok()
+                            old_data.get_version() + 1 == new_data.get_version()
                         }
                         _ => false,
                     };
