@@ -805,6 +805,7 @@ impl DataManager {
     pub fn handle_group_refresh(&mut self, serialised_refresh: &[u8]) -> Result<(), InternalError> {
         let RefreshData((data_id, version), refresh_hash) =
             serialisation::deserialise(serialised_refresh)?;
+        let mut success = false;
         for PendingWrite { data, mutate_type, src, dst, message_id, hash, .. } in self.cache
             .take_pending_writes(&data_id) {
             if hash == refresh_hash {
@@ -843,11 +844,21 @@ impl DataManager {
                     };
                     let data_list = vec![(data_id, version)];
                     let _ = self.send_refresh(Authority::NaeManager(*data_id.name()), data_list);
+                    success = true;
                 }
             } else {
                 trace!("{:?} did not accumulate. Sending failure", data_id);
                 let error = MutationError::NetworkOther("Concurrent modification.".to_owned());
                 self.send_failure(mutate_type, src, dst, data.identifier(), message_id, error)?;
+            }
+        }
+        if !success {
+            if let Ok(Some(group)) = self.routing_node.close_group(*data_id.name()) {
+                let data_idv = (data_id, version);
+                for node in &group {
+                    let _ = self.cache.register_data_with_holder(node, &data_idv);
+                }
+                self.send_gets_for_needed_data()?;
             }
         }
         Ok(())
