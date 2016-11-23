@@ -958,12 +958,10 @@ fn handle_delete_error_flow() {
     assert_eq!(reput_data, client.get(reput_data.identifier(), &mut nodes));
 }
 
-#[ignore]
 #[test]
 fn caching_with_data_not_close_to_proxy_node() {
     let network = Network::new(None);
-    let node_count = MIN_GROUP_SIZE + 2;
-    let mut nodes = test_node::create_nodes(&network, node_count, None, true);
+    let mut nodes = test_node::create_nodes_with_cache_till_split(&network);
 
     let config = mock_crust::Config::with_contacts(&[nodes[0].endpoint()]);
 
@@ -1003,8 +1001,7 @@ fn caching_with_data_not_close_to_proxy_node() {
 #[test]
 fn caching_with_data_close_to_proxy_node() {
     let network = Network::new(None);
-    let node_count = MIN_GROUP_SIZE + 2;
-    let mut nodes = test_node::create_nodes(&network, node_count, None, true);
+    let mut nodes = test_node::create_nodes_with_cache_till_split(&network);
 
     let config = mock_crust::Config::with_contacts(&[nodes[0].endpoint()]);
 

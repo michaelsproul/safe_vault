@@ -162,6 +162,16 @@ pub fn create_nodes(network: &Network,
     nodes
 }
 
+/// Create a mock network of nodes handling cache data with two disjoint groups
+pub fn create_nodes_with_cache_till_split(network: &Network) -> Vec<TestNode> {
+    let mut nodes = vec![TestNode::new(network, None, None, true, true)];
+    while nodes[0].routing_table().our_group_prefix().bit_count() == 0 {
+        add_node(network, &mut nodes, 0, true);
+        let _ = poll::poll_and_resend_unacknowledged_parallel(&mut nodes, &mut []);
+    }
+    nodes
+}
+
 /// Add node to the mock network
 pub fn add_node(network: &Network, nodes: &mut Vec<TestNode>, index: usize, use_cache: bool) {
     let config = mock_crust::Config::with_contacts(&[nodes[index].endpoint()]);

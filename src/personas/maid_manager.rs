@@ -404,6 +404,7 @@ impl MaidManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::DEFAULT_ACCOUNT_SIZE;
 
     #[test]
     fn account_struct_normal_updates() {
