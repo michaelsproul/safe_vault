@@ -25,7 +25,7 @@ pub mod test_node;
 use itertools::Itertools;
 use mock_crust_detail::test_node::TestNode;
 use personas::data_manager::IdAndVersion;
-use routing::{Data, MIN_GROUP_SIZE, XorName, Xorable};
+use routing::{self, Data, MIN_GROUP_SIZE, XorName, Xorable};
 use std::collections::{HashMap, HashSet};
 
 /// Checks that none of the given nodes has any copy of the given data left.
@@ -42,10 +42,11 @@ pub fn check_deleted_data(deleted_data: &[Data], nodes: &[TestNode]) {
             }
         });
     for (data_id, count) in data_count {
-        assert!(count < 5,
-                "Found deleted data: {:?}. count: {}",
-                data_id,
-                count);
+        assert_eq!(count,
+                   0,
+                   "Found deleted data: {:?}. count: {}",
+                   data_id,
+                   count);
     }
 }
 
@@ -70,26 +71,22 @@ pub fn check_data(all_data: Vec<Data>, nodes: &[TestNode]) {
             .into_iter()
             .sorted_by(|left, right| data_id.name().cmp_distance(left, right));
 
-        let mut expected_data_holders = nodes.iter()
-            .map(TestNode::name)
+        // Expected holders are those for which `close_group(<data name>)` returns `Some`.
+        let expected_data_holders = nodes.iter()
+            .filter_map(|test_node| test_node.close_group(data_id.name()).map(|_| test_node.name()))
             .sorted_by(|left, right| data_id.name().cmp_distance(left, right));
-
-        expected_data_holders.truncate(MIN_GROUP_SIZE);
 
         assert!(expected_data_holders == data_holders,
                 "Data: {:?}. expected = {:?}, actual = {:?}",
                 data_id,
                 expected_data_holders,
                 data_holders);
+        assert!(expected_data_holders.len() >= MIN_GROUP_SIZE);
     }
 }
 
-/// Verify that the kademlia invariant is upheld for all nodes.
-pub fn verify_kademlia_invariant_for_all_nodes(_nodes: &[TestNode]) {
-    unimplemented!();
-    // let routing_tables: Vec<RoutingTable<XorName>> =
-    //     nodes.iter().map(TestNode::routing_table).collect();
-    // for node_index in 0..nodes.len() {
-    //     routing::verify_kademlia_invariant(&routing_tables, node_index);
-    // }
+/// Verify that the Routing invariant is upheld for all nodes.
+pub fn verify_routing_invariant_for_all_nodes(nodes: &[TestNode]) {
+    let routing_tables = nodes.iter().map(TestNode::routing_table).collect_vec();
+    routing::verify_network_invariant(routing_tables.iter());
 }

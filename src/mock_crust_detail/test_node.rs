@@ -20,7 +20,7 @@ use config_handler::Config;
 
 use personas::data_manager::IdAndVersion;
 use rand::{self, Rng};
-use routing::XorName;
+use routing::{RoutingTable, XorName};
 use routing::mock_crust::{self, Endpoint, Network, ServiceHandle};
 use rustc_serialize::hex::ToHex;
 use std::{env, fs};
@@ -121,6 +121,11 @@ impl TestNode {
     /// name of vault.
     pub fn name(&self) -> XorName {
         self.vault.name()
+    }
+
+    /// `RoutingTable` of vault.
+    pub fn routing_table(&self) -> RoutingTable<XorName> {
+        self.vault.routing_table()
     }
 
     /// If our group is the closest one to `name`, returns all names in our group *including ours*,

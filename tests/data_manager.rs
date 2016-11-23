@@ -89,7 +89,7 @@ fn immutable_data_operations_with_churn(use_cache: bool) {
         trace!("Processed {} events.", event_count);
 
         mock_crust_detail::check_data(all_data.clone(), &nodes);
-        mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
+        mock_crust_detail::verify_routing_invariant_for_all_nodes(&nodes);
     }
 
     for data in &all_data {
@@ -193,7 +193,7 @@ fn structured_data_parallel_posts() {
         }
 
         mock_crust_detail::check_data(all_data.clone(), &nodes);
-        mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
+        mock_crust_detail::verify_routing_invariant_for_all_nodes(&nodes);
     }
 
     for data in &all_data {
@@ -310,7 +310,7 @@ fn structured_data_operations_with_churn() {
 
         mock_crust_detail::check_data(all_data.clone(), &nodes);
         mock_crust_detail::check_deleted_data(&deleted_data, &nodes);
-        mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
+        mock_crust_detail::verify_routing_invariant_for_all_nodes(&nodes);
     }
 
     for data in &all_data {

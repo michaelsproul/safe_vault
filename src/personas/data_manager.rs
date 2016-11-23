@@ -366,11 +366,11 @@ pub struct DataManager {
 fn id_and_version_of(data: &Data) -> IdAndVersion {
     (data.identifier(),
      match *data {
-        Data::Structured(ref sd) => sd.get_version(),
-        Data::PubAppendable(ref ad) => ad.get_version(),
-        Data::PrivAppendable(ref ad) => ad.get_version(),
-        Data::Immutable(_) => 0,
-    })
+         Data::Structured(ref sd) => sd.get_version(),
+         Data::PubAppendable(ref ad) => ad.get_version(),
+         Data::PrivAppendable(ref ad) => ad.get_version(),
+         Data::Immutable(_) => 0,
+     })
 }
 
 impl Debug for DataManager {
@@ -510,11 +510,11 @@ impl DataManager {
         let mut error_opt = None;
         let update_result = match (new_data, self.chunk_store.get(&data_id)) {
             (Data::Structured(new_sd), Err(_)) => {
-                    warn!("Post operation for nonexistent data. {:?} - {:?}",
-                          data_id,
-                          message_id);
-                    error_opt = Some(MutationError::NoSuchData);
-                    Ok(Data::Structured(new_sd))
+                warn!("Post operation for nonexistent data. {:?} - {:?}",
+                      data_id,
+                      message_id);
+                error_opt = Some(MutationError::NoSuchData);
+                Ok(Data::Structured(new_sd))
             }
             (_, Err(_)) => Err(MutationError::NoSuchData),
             (Data::Structured(new_sd), Ok(Data::Structured(mut sd))) => {
@@ -553,7 +553,7 @@ impl DataManager {
                        error);
                 let post_error = serialisation::serialise(&error)?;
                 return Ok(self.routing_node
-                              .send_post_failure(dst, src, data_id, post_error, message_id)?);
+                    .send_post_failure(dst, src, data_id, post_error, message_id)?);
             }
         };
 
@@ -806,8 +806,9 @@ impl DataManager {
         let RefreshData((data_id, version), refresh_hash) =
             serialisation::deserialise(serialised_refresh)?;
         let mut success = false;
-        for PendingWrite { data, mutate_type, src, dst, message_id, hash, .. } in self.cache
-            .take_pending_writes(&data_id) {
+        for PendingWrite { data, mutate_type, src, dst, message_id, hash, .. } in
+            self.cache
+                .take_pending_writes(&data_id) {
             if hash == refresh_hash {
                 let already_existed = self.chunk_store.has(&data_id);
                 if let Err(error) = self.chunk_store.put(&data_id, &data) {
@@ -897,16 +898,18 @@ impl DataManager {
                              message_id: MessageId,
                              refresh: bool)
                              -> Result<(), InternalError> {
-        for PendingWrite { mutate_type, src, dst, data, message_id, .. } in self.cache
-            .remove_expired_writes() {
+        for PendingWrite { mutate_type, src, dst, data, message_id, .. } in
+            self.cache
+                .remove_expired_writes() {
             let data_id = data.identifier();
             let error = MutationError::NetworkOther("Request expired.".to_owned());
             trace!("{:?} did not accumulate. Sending failure", data_id);
             self.send_failure(mutate_type, src, dst, data_id, message_id, error)?;
         }
         let data_name = *data.name();
-        if let Some(refresh_data) = self.cache
-            .insert_pending_write(data, mutate_type, src, dst, message_id) {
+        if let Some(refresh_data) =
+            self.cache
+                .insert_pending_write(data, mutate_type, src, dst, message_id) {
             if refresh {
                 let _ = self.send_group_refresh(data_name, refresh_data, message_id);
             }
@@ -1012,12 +1015,16 @@ impl DataManager {
 
     #[cfg(feature = "use-mock-crust")]
     pub fn get_stored_names(&self) -> Vec<IdAndVersion> {
-        let (front, back) = self.cache.unneeded_chunks.as_slices();
         self.chunk_store
             .keys()
             .into_iter()
-            .filter(|data_id| !front.contains(data_id) && !back.contains(data_id))
-            .filter_map(|data_id| self.to_id_and_version(data_id))
+            .filter_map(|data_id| {
+                if self.cache.is_in_unneeded(&data_id) {
+                    None
+                } else {
+                    self.to_id_and_version(data_id)
+                }
+            })
             .collect()
     }
 
