@@ -104,7 +104,6 @@ fn put_oversized_data() {
     // After serialisation, the len of SD, pub_ad and priv_ad is : 102604, 128216, 128256
 }
 
-#[ignore]
 #[test]
 fn handle_put_with_account() {
     let network = Network::new(None);
@@ -303,7 +302,7 @@ fn account_adding_with_churn() {
         for &(_, count) in &node_count_stats {
             assert!(count == Some(put_count), "{:?}", node_count_stats);
         }
-        mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
+        mock_crust_detail::verify_routing_invariant_for_all_nodes(&nodes);
     }
 }
 

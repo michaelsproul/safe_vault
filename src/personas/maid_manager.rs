@@ -404,24 +404,25 @@ impl MaidManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::DEFAULT_ACCOUNT_SIZE;
 
     #[test]
     fn account_struct_normal_updates() {
         let mut account = Account::default();
 
         assert_eq!(0, account.data_stored);
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.space_available);
-        for _ in 0..super::DEFAULT_ACCOUNT_SIZE {
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.space_available);
+        for _ in 0..DEFAULT_ACCOUNT_SIZE {
             assert!(account.add_entry().is_ok());
         }
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.data_stored);
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.data_stored);
         assert_eq!(0, account.space_available);
 
-        for _ in 0..super::DEFAULT_ACCOUNT_SIZE {
+        for _ in 0..DEFAULT_ACCOUNT_SIZE {
             account.remove_entry();
         }
         assert_eq!(0, account.data_stored);
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.space_available);
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.space_available);
     }
 
     #[test]
@@ -429,14 +430,14 @@ mod tests {
         let mut account = Account::default();
 
         assert_eq!(0, account.data_stored);
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.space_available);
-        for _ in 0..super::DEFAULT_ACCOUNT_SIZE {
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.space_available);
+        for _ in 0..DEFAULT_ACCOUNT_SIZE {
             assert!(account.add_entry().is_ok());
         }
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.data_stored);
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.data_stored);
         assert_eq!(0, account.space_available);
         assert!(account.add_entry().is_err());
-        assert_eq!(super::DEFAULT_ACCOUNT_SIZE, account.data_stored);
+        assert_eq!(DEFAULT_ACCOUNT_SIZE, account.data_stored);
         assert_eq!(0, account.space_available);
     }
 

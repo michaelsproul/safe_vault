@@ -20,7 +20,7 @@ use config_handler::Config;
 
 use personas::data_manager::IdAndVersion;
 use rand::{self, Rng};
-use routing::XorName;
+use routing::{RoutingTable, XorName};
 use routing::mock_crust::{self, Endpoint, Network, ServiceHandle};
 use rustc_serialize::hex::ToHex;
 use std::{env, fs};
@@ -123,6 +123,11 @@ impl TestNode {
         self.vault.name()
     }
 
+    /// `RoutingTable` of vault.
+    pub fn routing_table(&self) -> RoutingTable<XorName> {
+        self.vault.routing_table()
+    }
+
     /// If our group is the closest one to `name`, returns all names in our group *including ours*,
     /// otherwise returns `None`.
     pub fn close_group(&self, name: &XorName) -> Option<HashSet<XorName>> {
@@ -154,6 +159,16 @@ pub fn create_nodes(network: &Network,
         poll::nodes(&mut nodes);
     }
 
+    nodes
+}
+
+/// Create a mock network of nodes handling cache data with two disjoint groups
+pub fn create_nodes_with_cache_till_split(network: &Network) -> Vec<TestNode> {
+    let mut nodes = vec![TestNode::new(network, None, None, true, true)];
+    while nodes[0].routing_table().our_group_prefix().bit_count() == 0 {
+        add_node(network, &mut nodes, 0, true);
+        let _ = poll::poll_and_resend_unacknowledged_parallel(&mut nodes, &mut []);
+    }
     nodes
 }
 
