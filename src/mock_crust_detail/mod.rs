@@ -49,9 +49,9 @@ pub fn check_deleted_data(deleted_data: &[Data], nodes: &[TestNode]) {
 }
 
 /// Checks that the given `nodes` store the expected number of copies of the given data.
-pub fn check_data(all_data: Vec<Data>, nodes: &[TestNode]) {
+pub fn check_data(all_data: Vec<Data>, nodes: &mut [TestNode]) {
     let mut data_holders_map: HashMap<IdAndVersion, Vec<XorName>> = HashMap::new();
-    for node in nodes {
+    for node in nodes.iter_mut() {
         for data_idv in node.get_stored_names() {
             data_holders_map.entry(data_idv).or_insert_with(Vec::new).push(node.name());
         }
