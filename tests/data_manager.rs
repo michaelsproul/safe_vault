@@ -32,6 +32,7 @@ use safe_vault::mock_crust_detail::test_client::TestClient;
 use safe_vault::mock_crust_detail::test_node::TestNode;
 use std::{cmp, iter};
 use std::collections::{BTreeSet, HashSet};
+use maidsafe_utilities;
 
 const TEST_NET_SIZE: usize = 20;
 
@@ -89,7 +90,7 @@ fn immutable_data_operations_with_churn(use_cache: bool) {
         }
         trace!("Processed {} events.", event_count);
 
-        mock_crust_detail::check_data(all_data.clone(), &nodes);
+        mock_crust_detail::check_data(all_data.clone(), &mut nodes);
         mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
     }
 
@@ -192,7 +193,7 @@ fn structured_data_parallel_posts() {
             panic!("No response received for {:?}.", data.identifier());
         }
 
-        mock_crust_detail::check_data(all_data.clone(), &nodes);
+        mock_crust_detail::check_data(all_data.clone(), &mut nodes);
         mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
     }
 
@@ -307,7 +308,7 @@ fn structured_data_operations_with_churn() {
         }
         trace!("Processed {} events.", event_count);
 
-        mock_crust_detail::check_data(all_data.clone(), &nodes);
+        mock_crust_detail::check_data(all_data.clone(), &mut nodes);
         mock_crust_detail::check_deleted_data(&deleted_data, &nodes);
         mock_crust_detail::verify_kademlia_invariant_for_all_nodes(&nodes);
     }
@@ -523,6 +524,7 @@ fn post_oversized_appendable_data() {
 
 #[test]
 fn appendable_data_parallel_append() {
+    let _ = maidsafe_utilities::log::init(false);
     let network = Network::new(GROUP_SIZE, None);
     let mut rng = network.new_rng();
     let node_count = TEST_NET_SIZE;
