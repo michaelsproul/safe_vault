@@ -135,7 +135,7 @@ impl MaidManager {
                                   &client_name,
                                   self.accounts.get(&client_name).expect("Account not found."),
                                   MessageId::zero());
-                routing_node.send_put_success(dst, src, data_id, msg_id)?;
+                let _ = routing_node.send_put_success(dst, src, data_id, msg_id);
                 Ok(())
             }
             None => Err(InternalError::FailedToFindCachedRequest(msg_id)),
