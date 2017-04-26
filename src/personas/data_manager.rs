@@ -22,7 +22,7 @@ use error::InternalError;
 use itertools::Itertools;
 use maidsafe_utilities::serialisation;
 use routing::{AppendWrapper, Authority, Data, DataIdentifier, MessageId, RoutingTable,
-              StructuredData, XorName, sha3};
+              StructuredData, XorName, sha3, PendingMutationType, data_manager_hash, RefreshData};
 use routing::client_errors::{GetError, MutationError};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::From;
@@ -30,7 +30,6 @@ use std::fmt::{self, Debug, Formatter};
 use std::ops::Add;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-use tiny_keccak::sha3_256;
 use vault::RoutingNode;
 
 const MAX_FULL_PERCENT: u64 = 50;
@@ -62,14 +61,6 @@ struct PendingWrite {
     rejected: bool,
 }
 
-#[derive(Clone, Serialize)]
-enum PendingMutationType {
-    Append,
-    Put,
-    Post,
-    Delete,
-}
-
 struct Cache {
     /// Chunks we are no longer responsible for. These can be deleted from the chunk store.
     unneeded_chunks: VecDeque<DataIdentifier>,
@@ -82,6 +73,7 @@ struct Cache {
     logging_time: Instant,
     /// Maps data identifiers to the list of pending writes that affect that chunk.
     pending_writes: HashMap<DataIdentifier, Vec<PendingWrite>>,
+    evil: bool,
 }
 
 impl Default for Cache {
@@ -94,11 +86,19 @@ impl Default for Cache {
             data_holder_items_count: 0,
             logging_time: Instant::now(),
             pending_writes: HashMap::new(),
+            evil: false,
         }
     }
 }
 
 impl Cache {
+    fn new(evil: bool) -> Cache {
+        Cache {
+            evil: evil,
+            ..Cache::default()
+        }
+    }
+
     fn insert_into_ongoing_gets(&mut self, idle_holder: &XorName, data_idv: &IdAndVersion) {
         let _ = self.ongoing_gets
             .insert(*idle_holder, (Instant::now(), *data_idv));
@@ -333,11 +333,10 @@ impl Cache {
                             msg_id: MessageId,
                             rejected: bool)
                             -> Option<RefreshData> {
-        let hash_pair = match serialisation::serialise(&(data.clone(), mutate_type.clone())) {
-            Err(_) => return None,
-            Ok(serialised) => serialised,
+        let hash = match data_manager_hash(&data, mutate_type) {
+            Some(h) => h,
+            None => return None
         };
-        let hash = sha3_256(&hash_pair);
         let (data_id, version) = id_and_version_of(&data);
 
         let pending_write = PendingWrite {
@@ -353,7 +352,8 @@ impl Cache {
         let mut writes = self.pending_writes
             .entry(data_id)
             .or_insert_with(Vec::new);
-        let result = if !rejected && writes.iter().all(|pending_write| pending_write.rejected) {
+        let result = if self.evil ||
+            (!rejected && writes.iter().all(|pending_write| pending_write.rejected)) {
             Some(RefreshData((data_id, version), hash))
         } else {
             None
@@ -381,6 +381,7 @@ pub struct DataManager {
     appendable_data_count: u64,
     client_get_requests: u64,
     logging_time: Instant,
+    evil: bool,
 }
 
 fn id_and_version_of(data: &Data) -> IdAndVersion {
@@ -407,18 +408,28 @@ impl Debug for DataManager {
 }
 
 impl DataManager {
-    pub fn new(chunk_store_root: PathBuf, capacity: u64) -> Result<DataManager, InternalError> {
+    pub fn new(chunk_store_root: PathBuf, capacity: u64, evil: bool) -> Result<DataManager, InternalError> {
+        Self::_new(chunk_store_root, capacity, evil)
+    }
+
+    #[allow(unused)]
+    pub fn new_evil(chunk_store_root: PathBuf, capacity: u64) -> Result<DataManager, InternalError> {
+        Self::_new(chunk_store_root, capacity, true)
+    }
+
+    fn _new(chunk_store_root: PathBuf, capacity: u64, evil: bool) -> Result<DataManager, InternalError> {
         Ok(DataManager {
                chunk_store: ChunkStore::new(chunk_store_root, capacity)?,
                refresh_accumulator:
                    Accumulator::with_duration(ACCUMULATOR_QUORUM,
                                               Duration::from_secs(ACCUMULATOR_TIMEOUT_SECS)),
-               cache: Default::default(),
+               cache: Cache::new(evil),
                immutable_data_count: 0,
                structured_data_count: 0,
                appendable_data_count: 0,
                client_get_requests: 0,
                logging_time: Instant::now(),
+               evil: evil,
            })
     }
 
@@ -523,6 +534,7 @@ impl DataManager {
                        new_data: Data,
                        message_id: MessageId)
                        -> Result<(), InternalError> {
+        trace!("Node({:?}) Handling a POST for {}", routing_node.name().unwrap(), new_data.name());
         let data_id = new_data.identifier();
 
         if !new_data.validate_size() {
@@ -916,22 +928,31 @@ impl DataManager {
                             routing_node.send_delete_success(dst, src, data_id, message_id)
                         }
                     };
-                    let data_list = vec![(data_id, version)];
-                    let _ = self.send_refresh(routing_node,
-                                              Authority::NaeManager(*data_id.name()),
-                                              data_list);
+                    // don't send refreshes if evil, it might give us away!
+                    if !self.evil {
+                        let data_list = vec![(data_id, version)];
+                        let _ = self.send_refresh(routing_node,
+                                                  Authority::NaeManager(*data_id.name()),
+                                                  data_list);
+                    }
                     success = true;
                 }
             } else if !rejected {
-                trace!("{:?} did not accumulate. Sending failure", data_id);
-                let error = MutationError::NetworkOther("Concurrent modification.".to_owned());
-                self.send_failure(routing_node,
-                                  mutate_type,
-                                  src,
-                                  dst,
-                                  data.identifier(),
-                                  message_id,
-                                  error)?;
+                if self.evil {
+                    trace!("Nefariously sending success for conflicting write, muahahaha");
+                    routing_node.send_post_success(dst, src, data_id, message_id).unwrap();
+                } else {
+                    trace!("{:?} did not accumulate. Sending failure", data_id);
+                    let error = MutationError::NetworkOther("Concurrent modification.".to_owned());
+                    self.send_failure(routing_node,
+                                      mutate_type,
+                                      src,
+                                      dst,
+                                      data.identifier(),
+                                      message_id,
+                                      error)?;
+                }
+
             }
         }
         if !success {
@@ -1219,7 +1240,7 @@ impl DataManager {
         // FIXME - We need to handle >2MB chunks
         match serialisation::serialise(&RefreshDataList(data_list)) {
             Ok(serialised_list) => {
-                trace!("DM sending refresh to {:?}.", dst);
+                trace!("Node({:?}) DM sending refresh to {:?}.", routing_node.name().unwrap(), dst);
                 let _ =
                     routing_node.send_refresh_request(src, dst, serialised_list, MessageId::new());
                 Ok(())
@@ -1257,8 +1278,3 @@ impl DataManager {
 /// A list of data held by the sender. Sent from node to node.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 struct RefreshDataList(Vec<IdAndVersion>);
-
-/// A message from the group to itself to store the given data. If this accumulates, that means a
-/// quorum of group members approves.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
-struct RefreshData(IdAndVersion, sha3::Digest256);

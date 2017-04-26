@@ -42,6 +42,7 @@ extern crate safe_vault;
 extern crate tiny_keccak;
 #[macro_use]
 extern crate unwrap;
+extern crate maidsafe_utilities;
 
 mod network;
 mod maid_manager;

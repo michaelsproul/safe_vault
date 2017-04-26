@@ -149,16 +149,48 @@ fn immutable_data_operations_with_churn(use_cache: bool) {
     }
 }
 
+// i is iteration number, we check iteration "polarity" matches hash, i.e. i == hash(data[31]) mod 2.
+use ::maidsafe_utilities::SeededRng;
+fn sketchy_data(i: usize, prev_data: &Data, pub_key: &sign::PublicKey, key: &sign::SecretKey, rng: &mut SeededRng) -> Data {
+    use ::routing::{data_manager_hash, PendingMutationType};
+    let sd = match prev_data.clone() {
+        Data::Structured(sd) => sd,
+        _ => panic!("Non-structured data found.")
+    };
+    loop {
+        let mut new_sd = unwrap!(StructuredData::new(sd.get_type_tag(),
+                                                 *sd.name(),
+                                                 sd.get_version() + 1,
+                                                 rng.gen_iter().take(10).collect(),
+                                                 sd.get_owners().clone()));
+        let _ = new_sd.add_signature(&(pub_key.clone(), key.clone()));
+        let new_data = Data::Structured(new_sd);
+
+        if data_manager_hash(&new_data, PendingMutationType::Post).unwrap()[31] % 2 == i as u8 % 2 {
+            trace!("Found a good mutation, polarity: {}", i % 2);
+            return new_data;
+        } else {
+            trace!("Skipping unsuitable data mutation...");
+        }
+    }
+}
+
+// EVIL
 #[test]
 fn structured_data_parallel_posts() {
-    let network = Network::new(GROUP_SIZE, None);
+    let _ = ::maidsafe_utilities::log::init(false);
+    let group_size = 9; // only 1 evil node needed in this case rather than 2.
+    let network = Network::new(group_size, None);
     let mut rng = network.new_rng();
     let mut event_count = 0;
     let node_count = TEST_NET_SIZE;
     let mut nodes = test_node::create_nodes(&network, node_count, None, false);
-    let mut clients: Vec<_> = (0..3)
+    test_node::add_evil_node(&network, &mut nodes);
+    poll::nodes(&mut nodes);
+    let mut clients: Vec<_> = (0..2)
         .map(|_| {
-                 let endpoint = unwrap!(rng.choose(&nodes), "no nodes found").endpoint();
+                 // Contact node is the evil one.
+                 let endpoint = nodes.last().unwrap().endpoint();
                  let config = mock_crust::Config::with_contacts(&[endpoint]);
                  TestClient::new(&network, Some(config.clone()))
              })
@@ -170,10 +202,20 @@ fn structured_data_parallel_posts() {
     }
 
     let mut all_data = vec![];
-    for _ in 0..5 {
+    while all_data.len() < 5 {
         let type_tag = Range::new(10001, 20000).ind_sample(&mut rng);
         let sd = test_utils::random_structured_data(type_tag, clients[0].full_id(), &mut rng);
         let data = Data::Structured(sd);
+
+        // check that the malicious node is the closest for this bit of data
+        {
+            let mal_node = &nodes[nodes.len() - 1];
+            match mal_node.routing_table().closest_names(&data.name(), 1) {
+                Some(ref names) if names[0] == mal_node.routing_table().our_name() => (),
+                _ => continue
+            };
+        }
+
         trace!("Putting data {:?} with name {:?}.",
                data.identifier(),
                data.name());
@@ -188,18 +230,9 @@ fn structured_data_parallel_posts() {
         trace!("Iteration {}. Network size: {}", i + 1, nodes.len());
         let j = Range::new(0, all_data.len()).ind_sample(&mut rng);
         let new_data: Vec<Data> = clients.iter_mut()
-            .map(|client| {
-                let data = Data::Structured(if let Data::Structured(sd) = all_data[j].clone() {
-                    let mut sd = unwrap!(StructuredData::new(sd.get_type_tag(),
-                                                             *sd.name(),
-                                                             sd.get_version() + 1,
-                                                             rng.gen_iter().take(10).collect(),
-                                                             sd.get_owners().clone()));
-                    let _ = sd.add_signature(&(pub_key, key.clone()));
-                    sd
-                } else {
-                    panic!("Non-structured data found.");
-                });
+            .enumerate()
+            .map(|(k, client)| {
+                let data = sketchy_data(k, &all_data[j], &pub_key, &key, &mut rng);
                 trace!("Posting data {:?} with name {:?}.",
                        data.identifier(),
                        data.name());
@@ -214,14 +247,20 @@ fn structured_data_parallel_posts() {
         }
         trace!("Processed {} events.", event_count);
 
+        let mut success = false;
         'client_loop: for (client, data) in clients.iter_mut().zip(new_data) {
             while let Ok(event) = client.try_recv() {
                 match event {
                     Event::Response { response: Response::PostSuccess(..), .. } => {
                         trace!("Client {:?} received PostSuccess.", client.name());
-                        all_data[j] = data.clone();
-                        successes += 1;
-                        continue 'client_loop;
+                        if !success {
+                            all_data[j] = data.clone();
+                            successes += 1;
+                            success = true;
+                            continue 'client_loop;
+                        } else {
+                            panic!("Attack successful: two concurrent mutations received PostSuccess");
+                        }
                     }
                     Event::Response { response: Response::PostFailure { .. }, .. } => {
                         trace!("Client {:?} received PostFailure.", client.name());

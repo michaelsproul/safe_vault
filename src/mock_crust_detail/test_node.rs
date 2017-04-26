@@ -40,7 +40,8 @@ impl TestNode {
                crust_config: Option<mock_crust::Config>,
                config: Option<Config>,
                first_node: bool,
-               use_cache: bool)
+               use_cache: bool,
+               evil: bool)
                -> Self {
         let handle = network.new_service_handle(crust_config, None);
         let temp_root = env::temp_dir();
@@ -52,7 +53,7 @@ impl TestNode {
         let mut vault_config = config.unwrap_or_default();
         vault_config.chunk_store_root = Some(format!("{}", chunk_store_root.display()));
         let vault = mock_crust::make_current(&handle, || {
-            unwrap!(Vault::new_with_config(first_node, use_cache, vault_config))
+            unwrap!(Vault::new_with_config(first_node, use_cache, vault_config, evil))
         });
         TestNode {
             handle: handle,
@@ -121,7 +122,7 @@ pub fn create_nodes(network: &Network,
     let mut nodes = Vec::new();
 
     // Create the seed node.
-    nodes.push(TestNode::new(network, None, config.cloned(), true, use_cache));
+    nodes.push(TestNode::new(network, None, config.cloned(), true, use_cache, false));
     while nodes[0].poll() > 0 {}
 
     let crust_config = mock_crust::Config::with_contacts(&[nodes[0].endpoint()]);
@@ -132,17 +133,24 @@ pub fn create_nodes(network: &Network,
                                  Some(crust_config.clone()),
                                  config.cloned(),
                                  false,
-                                 use_cache));
+                                 use_cache,
+                                 false));
         poll::nodes(&mut nodes);
     }
 
     nodes
 }
 
+/// Add an evil node to the network.
+pub fn add_evil_node(network: &Network, nodes: &mut Vec<TestNode>) {
+    let crust_config = mock_crust::Config::with_contacts(&[nodes[0].endpoint()]);
+    nodes.push(TestNode::new(network, Some(crust_config), None, false, false, true));
+}
+
 /// Add node to the mock network
 pub fn add_node(network: &Network, nodes: &mut Vec<TestNode>, index: usize, use_cache: bool) {
     let config = mock_crust::Config::with_contacts(&[nodes[index].endpoint()]);
-    nodes.push(TestNode::new(network, Some(config.clone()), None, false, use_cache));
+    nodes.push(TestNode::new(network, Some(config.clone()), None, false, use_cache, false));
 }
 
 /// Add node to the mock network with specified config
@@ -152,7 +160,7 @@ pub fn add_node_with_config(network: &Network,
                             index: usize,
                             use_cache: bool) {
     let crust_config = mock_crust::Config::with_contacts(&[nodes[index].endpoint()]);
-    nodes.push(TestNode::new(network, Some(crust_config), Some(config), false, use_cache));
+    nodes.push(TestNode::new(network, Some(crust_config), Some(config), false, use_cache, false));
 }
 
 /// remove this node from the mock network

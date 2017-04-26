@@ -56,7 +56,7 @@ impl Vault {
         let builder = RoutingNode::builder()
             .first(first_vault)
             .deny_other_local_nodes();
-        match Self::vault_with_config(builder, use_cache, config.clone()) {
+        match Self::vault_with_config(builder, use_cache, config.clone(), false) {
             Ok(vault) => Ok(vault),
             Err(InternalError::ChunkStore(e)) => {
                 error!("Incorrect path {:?} for chunk_store_root: {:?}",
@@ -72,15 +72,20 @@ impl Vault {
     #[cfg(feature = "use-mock-crust")]
     pub fn new_with_config(first_vault: bool,
                            use_cache: bool,
-                           config: Config)
+                           config: Config,
+                           evil: bool)
                            -> Result<Self, InternalError> {
-        Self::vault_with_config(RoutingNode::builder().first(first_vault), use_cache, config)
+        let node = RoutingNode::builder()
+            .first(first_vault)
+            .evil(evil);
+        Self::vault_with_config(node, use_cache, config, evil)
     }
 
     /// Allow construct vault with config for mock-crust tests.
     fn vault_with_config(builder: NodeBuilder,
                          use_cache: bool,
-                         config: Config)
+                         config: Config,
+                         evil: bool)
                          -> Result<Self, InternalError> {
         rust_sodium::init();
 
@@ -99,7 +104,8 @@ impl Vault {
         Ok(Vault {
                maid_manager: MaidManager::new(config.invite_key.map(PublicKey)),
                data_manager: DataManager::new(chunk_store_root,
-                                              config.max_capacity.unwrap_or(DEFAULT_MAX_CAPACITY))?,
+                                              config.max_capacity.unwrap_or(DEFAULT_MAX_CAPACITY),
+                                              evil)?,
                routing_node: routing_node,
            })
 
@@ -163,7 +169,7 @@ impl Vault {
     /// Vault routing_table
     #[cfg(feature = "use-mock-crust")]
     pub fn routing_table(&self) -> RoutingTable<XorName> {
-        unwrap!(self.routing_node.routing_table())
+        unwrap!(self.routing_node.routing_table()).clone()
     }
 
     fn process_event(&mut self, event: Event) -> Option<bool> {
